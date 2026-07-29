@@ -1,0 +1,17 @@
+build/bin
+node_modules
+frontend/dist
+frontend/wailsjs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+*.out
+FishTun
+frontend/node_modules/
