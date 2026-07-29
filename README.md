@@ -1,10 +1,9 @@
+# FishTun
 
 <p align="left">
-  <img src="icon.png" alt="FishTun logo" width="128" style="vertical-align: middle; margin-right: 10px;">
-  <span style="font-size: 2em; font-weight: bold; vertical-align: middle;">FishTun</span>
+  <img src="icon.png" alt="FishTun logo" width="96" style="vertical-align: middle; margin-right: 10px;">
+  <span style="font-weight: bold; vertical-align: middle;font-style: italic;">Native GUI app — multi-tunnel SSH port forwarding</span>
 </p>
-
-> Native GUI app — multi-tunnel SSH port forwarding
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

@@ -53,6 +53,17 @@ Persisted between runs; GUI pre-fills with saved values.
 7. **System tray** — background operation with Show Window, Disconnect All, Make More Tunnels, Quit
 8. **Events** — Go bridge emits `log`/`status`/`error`/`tunnels` events via Wails EventsEmit; Vue listens via EventsOn
 
+## Release
+
+1. Bump version in `wails.json` → `info.productVersion`
+2. Commit, tag, push:
+   ```
+   git add -A && git commit -m "chore: release vX.Y.Z"
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+3. GitHub Actions builds 6 variants (linux amd64/arm64 .tar.gz, macos amd64/arm64 .dmg, windows amd64/arm64 .exe) and creates a Release with auto-generated release notes.
+
 
 # SYSTEM ROLE & OPERATIONAL RULES
 

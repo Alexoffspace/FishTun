@@ -1,0 +1,119 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            goarch: amd64
+            asset_name: FishTun-${{ github.ref_name }}-linux-amd64.tar.gz
+            ext: tar.gz
+          - os: ubuntu-24.04
+            goarch: arm64
+            asset_name: FishTun-${{ github.ref_name }}-linux-arm64.tar.gz
+            ext: tar.gz
+          - os: macos-latest
+            goarch: amd64
+            asset_name: FishTun-${{ github.ref_name }}-darwin-amd64.dmg
+            ext: dmg
+          - os: macos-latest
+            goarch: arm64
+            asset_name: FishTun-${{ github.ref_name }}-darwin-arm64.dmg
+            ext: dmg
+          - os: windows-latest
+            goarch: amd64
+            asset_name: FishTun-${{ github.ref_name }}-windows-amd64.exe
+            ext: exe
+          - os: windows-latest
+            goarch: arm64
+            asset_name: FishTun-${{ github.ref_name }}-windows-arm64.exe
+            ext: exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+        working-directory: frontend
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y gcc libx11-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libgl1-mesa-dev libxxf86vm-dev libgtk-3-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: QEMU for linux/arm64
+        if: runner.os == 'Linux' && matrix.goarch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build
+        env:
+          GOOS: ${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'darwin' || 'linux' }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          wails build -tags webkit2_41 -skipbindings
+
+      - name: Package Linux
+        if: matrix.ext == 'tar.gz'
+        run: tar -czf "${{ matrix.asset_name }}" -C build/bin FishTun
+
+      - name: Package macOS
+        if: matrix.ext == 'dmg'
+        run: |
+          hdiutil create -srcfolder build/bin/FishTun.app \
+            -volname FishTun \
+            -fs HFS+ \
+            -format UDZO \
+            "${{ matrix.asset_name }}"
+
+      - name: Package Windows
+        if: matrix.ext == 'exe'
+        run: |
+          mv build/bin/FishTun.exe "${{ matrix.asset_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FishTun-*
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: FishTun-*
+          generate_release_notes: true
