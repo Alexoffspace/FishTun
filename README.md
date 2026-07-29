@@ -1,17 +1,21 @@
-# FishTun
+<div style="display: flex;gap: 10px; flex-direction: column;padding: 10px;align-items: center;">
+  <img src="icon.png" alt="FishTun logo" width="128">
+  <h1 style="margin:0;padding:0;">FishTun</h1>
+  <i>Native GUI app — multi-tunnel SSH port forwarding</i>
+  <div>
 
-<p align="left">
-  <img src="icon.png" alt="FishTun logo" width="96" style="vertical-align: middle; margin-right: 10px;">
-  <span style="font-weight: bold; vertical-align: middle;font-style: italic;">Native GUI app — multi-tunnel SSH port forwarding</span>
-</p>
+  [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  [![Wails](https://img.shields.io/badge/Wails-v2-DF0000?logo=wails)](https://wails.io)
 
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Wails](https://img.shields.io/badge/Wails-v2-DF0000?logo=wails)](https://wails.io)
+  </div>
+</div>
 
 ## Overview
 
 FishTun is a desktop application built with Go, Wails, and Vue 3 that lets you create and manage multiple SSH tunnels through a native GUI. It forwards a remote port to your local machine and can optionally execute a command on the remote host (start/stop hooks).
+
+<p align="center"><img src="preview.png" alt="FishTun Preview" width="440"></p>
 
 ## Features
 
