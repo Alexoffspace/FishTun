@@ -1,15 +1,10 @@
-<div style="display: flex;gap: 10px; flex-direction: column;padding: 10px;align-items: center;">
-  <img src="icon.png" alt="FishTun logo" width="128">
-  <h1 style="margin:0;padding:0;">FishTun</h1>
-  <i>Native GUI app — multi-tunnel SSH port forwarding</i>
-  <div>
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Wails](https://img.shields.io/badge/Wails-v2-DF0000?logo=wails)](https://wails.io)
 
-  [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-  [![Wails](https://img.shields.io/badge/Wails-v2-DF0000?logo=wails)](https://wails.io)
-
-  </div>
-</div>
+<p align="center"><img src="icon.png" alt="FishTun logo" width="128"></p>
+<p><h1 style="margin:0;padding:0;text-align:center;">FishTun</h1></p>
+<p align="center"><i>Native GUI app — multi-tunnel SSH port forwarding</i></p>
 
 ## Overview
 
