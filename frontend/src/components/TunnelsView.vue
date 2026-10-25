@@ -153,21 +153,37 @@ const emit = defineEmits<{
 }
 
 .btn {
+  position: relative;
+  overflow: hidden;
   padding: 8px 20px;
   border-radius: 6px;
   border: none;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s, background 0.25s, box-shadow 0.25s, border-color 0.25s;
+  transform-origin: center;
+  transition: transform 0.15s, background 0.25s, box-shadow 0.25s, border-color 0.25s;
 }
 
-.btn:hover {
-  transform: scale(1.03);
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+
+.btn:hover::before {
+  transform: translateX(150%) skewX(-20deg);
 }
 
 .btn:active {
-  transform: scale(0.96);
+  transform: scaleY(0.9);
 }
 
 .btn-primary {

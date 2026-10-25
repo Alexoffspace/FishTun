@@ -9,6 +9,18 @@ export interface Config {
   DisconnectCmd: string
 }
 
+export interface SavedHost {
+  name: string
+  LocalPort: number
+  RemotePort: number
+  SSHHost: string
+  SSHUser: string
+  SSHPort: number
+  LocalHost: string
+  RemoteCmd: string
+  DisconnectCmd: string
+}
+
 export interface TunnelInfo {
   id: string
   localHost: string

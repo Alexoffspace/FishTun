@@ -2,10 +2,11 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Form from './components/Form.vue'
 import TunnelsView from './components/TunnelsView.vue'
+import HostsView from './components/HostsView.vue'
 import LogView from './components/LogView.vue'
-import { GetConfig, IsConnected, SaveConfig, Connect, Disconnect, DisconnectAll, OpenBrowser, GetTunnels, MinimizeToTray } from '../wailsjs/go/main/App'
+import { GetConfig, IsConnected, SaveConfig, Connect, Disconnect, DisconnectAll, OpenBrowser, GetTunnels, GetHosts, SaveHost, DeleteHost, MinimizeToTray } from '../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
-import type { Config, TunnelInfo } from './types'
+import type { Config, TunnelInfo, SavedHost } from './types'
 
 const config = ref<Config>({
   LocalPort: 4096,
@@ -19,9 +20,12 @@ const config = ref<Config>({
 })
 
 const tunnels = ref<TunnelInfo[]>([])
+const hosts = ref<SavedHost[]>([])
 const connecting = ref(false)
 const logs = ref<string[]>([])
 const showForm = ref(false)
+const viewMode = ref<'tunnels' | 'hosts'>('tunnels')
+const editingName = ref('')
 const errorMsg = ref('')
 const isLight = ref(false)
 
@@ -41,6 +45,11 @@ onMounted(async () => {
   const tuns = await GetTunnels()
   if (tuns && tuns.length > 0) {
     tunnels.value = tuns
+  }
+
+  const saved = await GetHosts()
+  if (saved) {
+    hosts.value = saved
   }
 
   const ready = () => {
@@ -68,6 +77,10 @@ onMounted(async () => {
     EventsOn('tunnels', (tuns: TunnelInfo[]) => {
       tunnels.value = tuns
     })
+
+    EventsOn('hosts', (hs: SavedHost[]) => {
+      hosts.value = hs
+    })
   }
 
   if (window.runtime) {
@@ -82,6 +95,7 @@ onUnmounted(() => {
   EventsOff('status')
   EventsOff('error')
   EventsOff('tunnels')
+  EventsOff('hosts')
   mq?.removeEventListener('change', onThemeChange)
 })
 
@@ -128,6 +142,87 @@ async function handleMinimize() {
 
 function handleMakeMore() {
   showForm.value = true
+  editingName.value = ''
+}
+
+async function handleSaveHost(name: string, cfg: Config) {
+  errorMsg.value = ''
+  if (!name || !name.trim()) {
+    errorMsg.value = 'Host name is required'
+    return
+  }
+  try {
+    await SaveConfig(cfg)
+    config.value = cfg
+    editingName.value = name.trim()
+    await SaveHost(name.trim(), cfg)
+  } catch (e: any) {
+    errorMsg.value = e.message || e.toString()
+  }
+}
+
+function handleConnectHost(host: SavedHost) {
+  errorMsg.value = ''
+  const cfg: Config = {
+    LocalPort: host.LocalPort,
+    RemotePort: host.RemotePort,
+    SSHHost: host.SSHHost,
+    SSHUser: host.SSHUser,
+    SSHPort: host.SSHPort,
+    LocalHost: host.LocalHost,
+    RemoteCmd: host.RemoteCmd,
+    DisconnectCmd: host.DisconnectCmd,
+  }
+  config.value = cfg
+  connecting.value = true
+
+  Connect(
+    cfg.SSHUser,
+    cfg.SSHHost,
+    cfg.SSHPort,
+    cfg.LocalPort,
+    cfg.RemotePort,
+    '',
+    cfg.LocalHost,
+    cfg.RemoteCmd,
+    cfg.DisconnectCmd,
+  ).catch((e: any) => {
+    const msg = e?.message || e?.toString() || ''
+    errorMsg.value = msg
+    connecting.value = false
+    if (msg.toLowerCase().includes('password')) {
+      openFormForHost(host)
+    }
+  })
+}
+
+function handleEditHost(host: SavedHost) {
+  openFormForHost(host)
+}
+
+function openFormForHost(host: SavedHost) {
+  config.value = {
+    LocalPort: host.LocalPort,
+    RemotePort: host.RemotePort,
+    SSHHost: host.SSHHost,
+    SSHUser: host.SSHUser,
+    SSHPort: host.SSHPort,
+    LocalHost: host.LocalHost,
+    RemoteCmd: host.RemoteCmd,
+    DisconnectCmd: host.DisconnectCmd,
+  }
+  editingName.value = host.name
+  showForm.value = true
+}
+
+async function handleDeleteHost(name: string) {
+  if (!window.confirm(`Delete host "${name}"?`)) return
+  try {
+    await DeleteHost(name)
+    if (editingName.value === name) editingName.value = ''
+  } catch (e: any) {
+    errorMsg.value = e.message || e.toString()
+  }
 }
 </script>
 
@@ -135,6 +230,22 @@ function handleMakeMore() {
   <div class="app">
     <div class="header">
       <h1>FishTun</h1>
+      <div class="header-nav">
+        <button
+          class="nav-btn"
+          :class="{ active: viewMode === 'tunnels' }"
+          @click="viewMode = 'tunnels'"
+        >
+          Tunnels
+        </button>
+        <button
+          class="nav-btn"
+          :class="{ active: viewMode === 'hosts' }"
+          @click="viewMode = 'hosts'"
+        >
+          Hosts
+        </button>
+      </div>
     </div>
 
     <div v-if="errorMsg" class="error-bar">
@@ -143,16 +254,8 @@ function handleMakeMore() {
     </div>
 
     <Transition name="view" mode="out-in">
-      <div v-if="tunnels.length === 0 && !showForm" key="form" class="main-content">
-        <Form :config="config" :connecting="connecting" @connect="handleConnect" />
-        <div v-if="connecting" class="connecting-bar">
-          <span class="spinner"></span>
-          Establishing SSH tunnel...
-        </div>
-      </div>
-
-      <div v-else-if="showForm" key="add-form" class="main-content">
-        <Form :config="config" :connecting="connecting" @connect="handleConnect" />
+      <div v-if="showForm" key="add-form" class="main-content">
+        <Form :config="config" :connecting="connecting" :initial-name="editingName" @connect="handleConnect" @save="handleSaveHost" />
         <div v-if="connecting" class="connecting-bar">
           <span class="spinner"></span>
           Establishing SSH tunnel...
@@ -160,6 +263,16 @@ function handleMakeMore() {
         <div v-if="!connecting" class="btn-row-centered">
           <button class="btn btn-secondary cancel-btn" @click="showForm = false">Cancel</button>
         </div>
+      </div>
+
+      <div v-else-if="viewMode === 'hosts' || tunnels.length === 0" key="hosts" class="main-content">
+        <HostsView
+          :hosts="hosts"
+          @connect="handleConnectHost"
+          @edit="handleEditHost"
+          @delete="handleDeleteHost"
+          @new="handleMakeMore"
+        />
       </div>
 
       <div v-else key="tunnels" class="main-content">
@@ -274,6 +387,54 @@ body {
   animation: glowPulse 3s ease-in-out infinite;
 }
 
+.header-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.nav-btn {
+  position: relative;
+  overflow: hidden;
+  padding: 6px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.nav-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+
+.nav-btn:hover {
+  color: var(--text-primary);
+}
+
+.nav-btn:hover::before {
+  transform: translateX(150%) skewX(-20deg);
+}
+
+.nav-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 .main-content {
   flex: 1;
   overflow-y: auto;
@@ -352,17 +513,37 @@ body {
 }
 
 .btn {
+  position: relative;
+  overflow: hidden;
   padding: 8px 20px;
   border-radius: 6px;
   border: none;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  transform-origin: center;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+
+.btn:hover::before {
+  transform: translateX(150%) skewX(-20deg);
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scaleY(0.9);
 }
 
 .btn-secondary {

@@ -27,18 +27,22 @@ sudo apt install gcc libx11-dev libxrandr-dev libxinerama-dev libxi-dev \
 Stored at `~/.config/FishTun/config` in `KEY="value"` format.
 Persisted between runs; GUI pre-fills with saved values.
 
+Saved hosts stored at `~/.config/FishTun/hosts` in INI format (`[name]` sections with `KEY="value"`).
+Passwords are never persisted.
+
 ## Source files
 
 | File | Lines | Purpose |
 |---|---|---|
 | `main.go` | ~50 | Wails app entry, window options |
-| `app.go` | ~320 | Bridge: Connect, Disconnect, OpenBrowser, config, event emit |
+| `app.go` | ~320 | Bridge: Connect, Disconnect, OpenBrowser, GetHosts/SaveHost/DeleteHost, config, event emit |
 | `ssh.go` | ~235 | Tunnel struct — ssh.Dial, local TCP listener, connection relay (io.Copy), remote command, keepalive, graceful shutdown |
-| `config.go` | ~150 | Config struct (LocalPort, RemotePort, SSHHost, SSHUser, SSHPort, LocalHost, RemoteCmd, DisconnectCmd), LoadConfig(), SaveConfig() |
+| `config.go` | ~150 | Config struct, LoadConfig()/SaveConfig(); SavedHost, LoadHosts()/SaveHosts() |
 | `tunnel.go` | ~40 | openURL(), waitForLocalPort() helpers |
 | `systray.go` | ~40 | System tray menu and event pipes |
-| `frontend/src/App.vue` | ~380 | Root Vue component: tunnels list, form toggle, log, error, events |
-| `frontend/src/components/Form.vue` | ~240 | SSH connection form (ports, host, user, password, commands) |
+| `frontend/src/App.vue` | ~380 | Root Vue component: tunnels/hosts views, form toggle, log, error, events |
+| `frontend/src/components/Form.vue` | ~240 | SSH connection form (host name, ports, host, user, password, commands) |
+| `frontend/src/components/HostsView.vue` | ~150 | Saved hosts list, Connect / Edit / Delete actions |
 | `frontend/src/components/TunnelsView.vue` | ~215 | Connected tunnels list, Open Browser / Disconnect buttons |
 | `frontend/src/components/LogView.vue` | ~85 | Scrollable console log panel |
 

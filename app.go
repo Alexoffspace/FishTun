@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/getlantern/systray"
@@ -24,6 +25,7 @@ type TunnelInfo struct {
 type App struct {
 	ctx              context.Context
 	config           Config
+	hosts            []SavedHost
 	tunnels          map[string]*Tunnel
 	tunnelInfo       map[string]TunnelInfo
 	mu               sync.Mutex
@@ -40,6 +42,7 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		config:    LoadConfig(),
+		hosts:     LoadHosts(),
 		tunnels:   make(map[string]*Tunnel),
 		tunnelInfo: make(map[string]TunnelInfo),
 	}
@@ -97,6 +100,68 @@ func (a *App) GetConfig() Config {
 func (a *App) SaveConfig(cfg Config) {
 	a.config = cfg
 	SaveConfig(cfg)
+}
+
+func (a *App) GetHosts() []SavedHost {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]SavedHost, len(a.hosts))
+	copy(out, a.hosts)
+	return out
+}
+
+func (a *App) SaveHost(name string, cfg Config) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name required")
+	}
+	a.mu.Lock()
+	found := false
+	for i := range a.hosts {
+		if a.hosts[i].Name == name {
+			a.hosts[i] = SavedHost{Name: name, Config: cfg}
+			found = true
+			break
+		}
+	}
+	if !found {
+		a.hosts = append(a.hosts, SavedHost{Name: name, Config: cfg})
+	}
+	hosts := make([]SavedHost, len(a.hosts))
+	copy(hosts, a.hosts)
+	a.mu.Unlock()
+
+	SaveHosts(hosts)
+	a.emitLog(fmt.Sprintf("Host \"%s\" saved", name))
+	a.emitHostsUpdate()
+	return nil
+}
+
+func (a *App) DeleteHost(name string) error {
+	a.mu.Lock()
+	out := a.hosts[:0]
+	for _, h := range a.hosts {
+		if h.Name != name {
+			out = append(out, h)
+		}
+	}
+	a.hosts = out
+	hosts := make([]SavedHost, len(a.hosts))
+	copy(hosts, a.hosts)
+	a.mu.Unlock()
+
+	SaveHosts(hosts)
+	a.emitLog(fmt.Sprintf("Host \"%s\" deleted", name))
+	a.emitHostsUpdate()
+	return nil
+}
+
+func (a *App) emitHostsUpdate() {
+	a.mu.Lock()
+	hosts := make([]SavedHost, len(a.hosts))
+	copy(hosts, a.hosts)
+	a.mu.Unlock()
+	runtime.EventsEmit(a.ctx, "hosts", hosts)
 }
 
 func (a *App) tunnelLabel() string {

@@ -5,13 +5,16 @@ import type { Config } from '../types'
 const props = defineProps<{
   config: Config
   connecting: boolean
+  initialName?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'connect', config: Config, password: string): void
+  (e: 'save', name: string, config: Config): void
 }>()
 
 const form = reactive({
+  hostName: props.initialName || '',
   localPort: props.config.LocalPort.toString(),
   remotePort: props.config.RemotePort.toString(),
   sshHost: props.config.SSHHost,
@@ -21,6 +24,10 @@ const form = reactive({
   password: '',
   remoteCmd: props.config.RemoteCmd,
   disconnectCmd: props.config.DisconnectCmd,
+})
+
+watch(() => props.initialName, (name) => {
+  form.hostName = name || ''
 })
 
 watch(() => ({ ...props.config }), (cfg) => {
@@ -39,8 +46,8 @@ function parsePort(s: string, def: number): number {
   return isNaN(v) || v < 1 || v > 65535 ? def : v
 }
 
-function handleSubmit() {
-  const cfg: Config = {
+function buildConfig(): Config {
+  return {
     LocalPort: parsePort(form.localPort, 4096),
     RemotePort: parsePort(form.remotePort, 8080),
     SSHHost: form.sshHost,
@@ -50,12 +57,25 @@ function handleSubmit() {
     RemoteCmd: form.remoteCmd,
     DisconnectCmd: form.disconnectCmd,
   }
-  emit('connect', cfg, form.password)
+}
+
+function handleSubmit() {
+  emit('connect', buildConfig(), form.password)
+}
+
+function handleSave() {
+  emit('save', form.hostName, buildConfig())
 }
 </script>
 
 <template>
   <div class="form-card">
+    <div class="section-title">Saved Host</div>
+    <div class="field">
+      <label>Name</label>
+      <input v-model="form.hostName" type="text" placeholder="my-server" :disabled="connecting" />
+    </div>
+
     <div class="section-title">Tunnel Ports</div>
     <div class="field">
       <label>Local</label>
@@ -104,6 +124,9 @@ function handleSubmit() {
     </div>
 
     <div class="btn-row">
+      <button class="btn btn-secondary" :disabled="connecting" @click="handleSave">
+        Save
+      </button>
       <button class="btn btn-primary" :disabled="connecting" @click="handleSubmit">
         {{ connecting ? 'Connecting...' : 'Connect' }}
       </button>
@@ -208,17 +231,37 @@ function handleSubmit() {
 }
 
 .btn {
+  position: relative;
+  overflow: hidden;
   padding: 8px 20px;
   border-radius: 6px;
   border: none;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  transform-origin: center;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+
+.btn:hover:not(:disabled)::before {
+  transform: translateX(150%) skewX(-20deg);
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scaleY(0.9);
 }
 
 .btn-primary {
@@ -229,7 +272,6 @@ function handleSubmit() {
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   box-shadow: 0 4px 14px rgba(67,97,238,0.35);
-  transform: translateY(-1px);
 }
 
 .btn-primary:disabled {
@@ -238,5 +280,15 @@ function handleSubmit() {
   background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--accent));
   background-size: 200% 100%;
   animation: shimmer 1.5s linear infinite;
+}
+
+.btn-secondary {
+  background: var(--text-secondary);
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(160,160,176,0.35);
 }
 </style>
