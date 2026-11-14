@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/getlantern/systray"
+	"github.com/energye/systray"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -23,39 +24,37 @@ type TunnelInfo struct {
 }
 
 type App struct {
-	ctx              context.Context
-	config           Config
-	hosts            []SavedHost
-	tunnels          map[string]*Tunnel
-	tunnelInfo       map[string]TunnelInfo
-	mu               sync.Mutex
-	iconData         []byte
-	makeMoreCh       chan struct{}
-	showWindowCh     chan struct{}
-	disconnectAllCh  chan struct{}
-	quitCh           chan struct{}
-	trayStarted      bool
-	trayMu           sync.Mutex
-	tooltipCh        chan string
+	ctx             context.Context
+	config          Config
+	hosts           []SavedHost
+	tunnels         map[string]*Tunnel
+	tunnelInfo      map[string]TunnelInfo
+	mu              sync.Mutex
+	iconData        []byte
+	makeMoreCh      chan struct{}
+	showWindowCh    chan struct{}
+	disconnectAllCh chan struct{}
+	quitCh          chan struct{}
+	trayStarted     bool
+	trayMu          sync.Mutex
+	quitting        bool
 }
 
 func NewApp() *App {
 	return &App{
-		config:    LoadConfig(),
-		hosts:     LoadHosts(),
-		tunnels:   make(map[string]*Tunnel),
-		tunnelInfo: make(map[string]TunnelInfo),
+		config:          LoadConfig(),
+		hosts:           LoadHosts(),
+		tunnels:         make(map[string]*Tunnel),
+		tunnelInfo:      make(map[string]TunnelInfo),
+		makeMoreCh:      make(chan struct{}, 10),
+		showWindowCh:    make(chan struct{}, 10),
+		disconnectAllCh: make(chan struct{}, 10),
+		quitCh:          make(chan struct{}, 10),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.makeMoreCh = make(chan struct{}, 10)
-	a.showWindowCh = make(chan struct{}, 10)
-	a.disconnectAllCh = make(chan struct{}, 10)
-	a.quitCh = make(chan struct{}, 10)
-	a.tooltipCh = make(chan string, 1)
-
 	go a.handleTrayEvents()
 }
 
@@ -63,19 +62,74 @@ func (a *App) handleTrayEvents() {
 	for {
 		select {
 		case <-a.makeMoreCh:
-			runtime.Show(a.ctx)
+			a.showWindow()
 		case <-a.showWindowCh:
-			runtime.Show(a.ctx)
+			a.showWindow()
+		case <-instanceShowCh:
+			a.showWindow()
 		case <-a.disconnectAllCh:
 			a.DisconnectAll()
 		case <-a.quitCh:
 			a.DisconnectAll()
-			go a.quit()
+			a.quit()
 			return
 		}
 	}
 }
 
+// showWindow reliably brings the window to the front, even if it is hidden or
+// minimised. The transient always-on-top toggle raises it above other windows.
+func (a *App) showWindow() {
+	runtime.WindowShow(a.ctx)
+	runtime.WindowUnminimise(a.ctx)
+	runtime.WindowSetAlwaysOnTop(a.ctx, true)
+	runtime.WindowSetAlwaysOnTop(a.ctx, false)
+}
+
+// onBeforeClose handles the window close button. When no tunnel is active the
+// app quits immediately (nothing to keep alive in the tray); otherwise the close
+// is cancelled and the frontend is asked (in-app popup) whether to exit or keep
+// running in the tray. The decision arrives asynchronously via ExitApp/HideToTray.
+func (a *App) onBeforeClose(ctx context.Context) bool {
+	a.trayMu.Lock()
+	quitting := a.quitting
+	a.trayMu.Unlock()
+	if quitting {
+		return false
+	}
+	// With no active tunnels there is nothing to keep running in the tray, so
+	// the close button quits directly instead of showing the tray prompt.
+	a.mu.Lock()
+	hasTunnels := len(a.tunnels) > 0
+	a.mu.Unlock()
+	if !hasTunnels {
+		a.trayMu.Lock()
+		a.quitting = true
+		a.trayMu.Unlock()
+		return false
+	}
+	runtime.WindowShow(a.ctx)
+	runtime.EventsEmit(a.ctx, "confirm-close")
+	return true
+}
+
+// ExitApp quits the application after the user confirmed the close popup.
+func (a *App) ExitApp() {
+	a.trayMu.Lock()
+	a.quitting = true
+	a.trayMu.Unlock()
+	runtime.Quit(a.ctx)
+}
+
+// HideToTray keeps the application running in the tray after the user chose so
+// in the close popup.
+func (a *App) HideToTray() {
+	runtime.Hide(a.ctx)
+}
+
+// startTray launches the system tray with an external event loop so it can run
+// alongside the Wails/WebView2 loop. start() must be called from a goroutine,
+// never the UI thread. end() may be called at most once.
 func (a *App) startTray() {
 	a.trayMu.Lock()
 	if a.trayStarted {
@@ -85,12 +139,24 @@ func (a *App) startTray() {
 	a.trayStarted = true
 	a.trayMu.Unlock()
 
-	go runTray(a.iconData, a.makeMoreCh, a.showWindowCh, a.disconnectAllCh, a.quitCh, a.tooltipCh)
+	iconData := a.iconData
+	start, _ := systray.RunWithExternalLoop(func() {
+		onTrayReady(iconData, a.makeMoreCh, a.showWindowCh, a.disconnectAllCh, a.quitCh)
+	}, func() {})
+
+	go start()
 }
 
 func (a *App) quit() {
-	runtime.Quit(a.ctx)
+	a.trayMu.Lock()
+	a.quitting = true
+	a.trayMu.Unlock()
+
+	// Stop the tray pump first so it can remove the icon (NIM_DELETE), then quit
+	// Wails. Reversing the order can hang and orphan the tray icon.
 	systray.Quit()
+	time.Sleep(150 * time.Millisecond)
+	runtime.Quit(a.ctx)
 }
 
 func (a *App) GetConfig() Config {
@@ -177,10 +243,7 @@ func (a *App) tunnelLabel() string {
 func (a *App) setTitleAndTooltip() {
 	label := a.tunnelLabel()
 	runtime.WindowSetTitle(a.ctx, label)
-	select {
-	case a.tooltipCh <- label:
-	default:
-	}
+	systray.SetTooltip(label)
 }
 
 func (a *App) emitLog(msg string) {
@@ -267,8 +330,6 @@ func (a *App) Connect(sshUser, sshHost string, sshPort, localPort, remotePort in
 	a.emitTunnelsUpdate()
 	a.emitStatus("connected")
 	a.setTitleAndTooltip()
-
-	a.startTray()
 
 	go func() {
 		tunnel.Wait()
@@ -383,5 +444,5 @@ func (a *App) Config() Config {
 }
 
 func (a *App) MinimizeToTray() {
-	runtime.Hide(a.ctx)
+	a.HideToTray()
 }
