@@ -71,7 +71,7 @@ Icons: `icon.png` (repository root) is the single source of truth. Windows tray/
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-3. GitHub Actions builds 5 variants (linux amd64/arm64 .tar.gz, macos universal .dmg, windows amd64/arm64 .exe) and creates a Release with auto-generated release notes. macOS is built once on `macos-15` with `-platform darwin/universal` (GitHub retired Intel `macos-13`/`macos-14` runners); Wails `-platform` sets GOOS/GOARCH/CGO_ENABLED itself, so the workflow must not set them (only `CC` for linux/arm64 cross-compile), and `-skipbindings` is forbidden because `frontend/wailsjs` is gitignored and generated during `wails build` before the frontend build.
+3. GitHub Actions builds 5 variants (linux amd64/arm64 .tar.gz, macos universal .dmg, windows amd64/arm64 .exe) and creates a Release with auto-generated release notes. macOS is built once on `macos-15` with `-platform darwin/universal` (GitHub retired Intel `macos-13`/`macos-14` runners); Wails `-platform` sets GOOS/GOARCH/CGO_ENABLED itself, so the workflow must not set them (only `CC` for linux/arm64 cross-compile), and `-skipbindings` is forbidden because `frontend/wailsjs` is gitignored and generated during `wails build` before the frontend build. linux/arm64 cannot be cross-compiled from the x86_64 runner (cgo+GTK needs aarch64 dev packages, not present there), so it builds inside an emulated `ubuntu:24.04 --platform linux/arm64` container via `docker run` with `wails build -s` (frontend and bindings are prepared on the host first).
 
 
 # SYSTEM ROLE & OPERATIONAL RULES

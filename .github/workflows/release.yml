@@ -66,19 +66,42 @@ jobs:
             libxi-dev libgl1-mesa-dev libxxf86vm-dev libgtk-3-dev \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
-      - name: Install Linux arm64 cross toolchain
-        if: runner.os == 'Linux' && matrix.goarch == 'arm64'
-        run: |
-          sudo apt install -y gcc-aarch64-linux-gnu
-
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      # linux/arm64 needs native aarch64 GTK/WebKit dev packages, which are not
+      # available on the x86_64 runner. Build it inside an emulated arm64
+      # container instead of cross-compiling cgo.
+      - name: Prepare frontend for arm64 (host)
+        if: matrix.platform == 'linux/arm64'
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          # Bindings first: the frontend imports ../wailsjs, which is gitignored.
+          wails generate module
+          npm --prefix frontend run build
+
+      - name: Build (linux/arm64 via QEMU container)
+        if: matrix.platform == 'linux/arm64'
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${{ github.workspace }}:/src" \
+            -w /src \
+            ubuntu:24.04 bash -euo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates curl git build-essential pkg-config \
+                libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+              curl -fsSL https://go.dev/dl/go1.25.0.linux-arm64.tar.gz -o /tmp/go.tgz
+              tar -C /usr/local -xzf /tmp/go.tgz
+              export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
+              git config --global --add safe.directory /src
+              go install github.com/wailsapp/wails/v2/cmd/wails@latest
+              wails build -platform linux/arm64 -s -tags webkit2_41
+            '
+
       - name: Build
-        env:
-          # Only linux/arm64 needs an explicit cross C compiler; Wails sets
-          # GOOS/GOARCH/CGO_ENABLED itself from -platform.
-          CC: ${{ matrix.platform == 'linux/arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+        if: matrix.platform != 'linux/arm64'
         shell: bash
         run: |
           export PATH="$PATH:$(go env GOPATH)/bin"
