@@ -76,8 +76,10 @@ jobs:
         if: matrix.platform == 'linux/arm64'
         run: |
           export PATH="$PATH:$(go env GOPATH)/bin"
-          # Bindings first: the frontend imports ../wailsjs, which is gitignored.
-          wails generate module
+          # wails generate module compiles the package, so the //go:embed
+          # all:frontend/dist target must exist before bindings are generated.
+          mkdir -p frontend/dist && touch frontend/dist/gitkeep
+          wails generate module -tags webkit2_41
           npm --prefix frontend run build
 
       - name: Build (linux/arm64 via QEMU container)
