@@ -71,7 +71,14 @@ jobs:
 
       # linux/arm64 needs native aarch64 GTK/WebKit dev packages, which are not
       # available on the x86_64 runner. Build it inside an emulated arm64
-      # container instead of cross-compiling cgo.
+      # container instead of cross-compiling cgo. QEMU registers the binfmt
+      # handlers that let the x86_64 kernel execute the aarch64 image.
+      - name: Set up QEMU
+        if: matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Prepare frontend for arm64 (host)
         if: matrix.platform == 'linux/arm64'
         run: |
