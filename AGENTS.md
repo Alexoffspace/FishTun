@@ -44,7 +44,7 @@ Passwords are never persisted.
 | `frontend/src/components/Form.vue` | ~240 | SSH connection form (host name, ports, host, user, password, commands) |
 | `frontend/src/components/HostsView.vue` | ~150 | Saved hosts list, Connect / Edit / Delete actions |
 | `frontend/src/components/TunnelsView.vue` | ~215 | Connected tunnels list, Open Browser / Disconnect buttons |
-| `frontend/src/components/LogView.vue` | ~85 | Scrollable console log panel |
+| `frontend/src/components/LogView.vue` | ~120 | Console log panel with full-window expand toggle (fixed-inset overlay, Escape to collapse; state lives in `App.vue` as `logExpanded`) |
 
 ## Architecture
 
@@ -56,6 +56,11 @@ Passwords are never persisted.
 6. **Config persistence** — `~/.config/FishTun/config` in `KEY="value"` format, loaded on start, saved on submit
 7. **System tray** — background operation with Show Window, Disconnect All, Make More Tunnels, Quit
 8. **Events** — Go bridge emits `log`/`status`/`error`/`tunnels` events via Wails EventsEmit; Vue listens via EventsOn
+9. **Single instance** — `instance.go` uses an O_EXCL lock file (`~/.config/FishTun/instance.lock`) holding a loopback IPC port; a second launch dials it, sends `show`, and exits, so only one process runs. Stale locks from a crash are recovered by removing the file and retrying.
+
+Tray uses `github.com/energye/systray` via `RunWithExternalLoop` (started in `main` before `wails.Run`); click handlers dispatch to Wails only through non-blocking channel sends. `HideWindowOnClose` must stay off: with it enabled Wails hides the window in `OnClose` and never calls `OnBeforeClose`, so the X button bypasses the tray-hide logic. `OnBeforeClose` is the single hide path and never blocks: it shows the window, emits the `confirm-close` event and returns `true` (close cancelled). The Vue app renders an in-app popup with **System tray** (`HideToTray`: `runtime.Hide`) and **Close app** (`ExitApp`: sets `quitting` then `runtime.Quit`). Never use `runtime.MessageDialog` here — Win32 `QuestionDialog` is hard-limited to Yes/No labels.
+
+Icons: `icon.png` (repository root) is the single source of truth. Windows tray/window need an ICO container (Win32 rejects raw PNG), so run `go run genico.go` after changing `icon.png`: it regenerates root `icon.ico` (16/32/48 as DIB, 256 as PNG) and mirrors it to `build/windows/icon.ico` for the Wails exe resource. `main.go` embeds both and picks via `trayIcon()` — ICO on Windows, PNG elsewhere (Linux GTK/`Linux.Options.Icon`, macOS).
 
 ## Release
 
@@ -66,38 +71,34 @@ Passwords are never persisted.
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-3. GitHub Actions builds 6 variants (linux amd64/arm64 .tar.gz, macos amd64/arm64 .dmg, windows amd64/arm64 .exe) and creates a Release with auto-generated release notes.
+3. GitHub Actions builds 5 variants (linux amd64/arm64 .tar.gz, macos universal .dmg, windows amd64/arm64 .exe) and creates a Release with auto-generated release notes. macOS is built once on `macos-15` with `-platform darwin/universal` (GitHub retired Intel `macos-13`/`macos-14` runners); Wails `-platform` sets GOOS/GOARCH/CGO_ENABLED itself, so the workflow must not set them (only `CC` for linux/arm64 cross-compile), and `-skipbindings` is forbidden because `frontend/wailsjs` is gitignored and generated during `wails build` before the frontend build.
 
 
 # SYSTEM ROLE & OPERATIONAL RULES
 
-### 1. Mandatory Root-Cause Analysis (Before Code)
-- Before writing any code snippet, you MUST output a mandatory multi-step technical analysis.
-- Use the following rigid structural format inside the markdown code block before the code itself:
-  /*
-  [ANALYSIS]
-  - Root Issue: [Identify the true underlying cause, not just the symptom]
-  - Side-Effects: [List potential breaking changes in related systems/configs]
-  - Edge Cases: [Identify at least 2 hidden edge cases or fail-states]
-  - Strategy: [Step-by-step logic of the proposed structural fix]
-  */
-- Never skip this block. Do not write code until the analysis is fully detailed.
+### 1. Pre-Execution Root-Cause Analysis
+Before making any edits or writing code, you MUST output a concise multi-step technical analysis using this exact structure:
+[ANALYSIS]
+- Root Issue: [True underlying cause, not just the symptom]
+- Side-Effects: [Potential breaking changes in related systems/configs]
+- Edge Cases: [At least 2 hidden edge cases or fail-states]
+- Strategy: [Step-by-step logic of the proposed structural fix]
 
-### 2. AI Communication (Extreme Economy)
-- **ZERO CHAT EXPLANATIONS.**
-- No introductory or concluding phrases (e.g., "Sure, I can help", "Here is the code").
-- After successful execution: Output exactly "Done." or "Fixed." after the final code block.
-- If clarification is strictly required: Output exactly "Q: [option A] or [option B]?"
-- Error reporting: Output exactly "Error: [3-word reason]"
+Never skip this block. Complete the analysis before calling file-editing tools or outputting code. Keep each point strictly factual and telegraphic to save tokens.
 
-### 3. Output Formatting & Context Hygiene
-- **No Full File Echoing.** Provide only the modified code snippets, functions, or diffs.
-- **Markdown Only.** Wrap all code outputs strictly in appropriate markdown code blocks.
-- **No Text Summaries.** Do not explain what changed or how it works in the chat.
+### 2. Token Economy & Language Rules
+- **Strict Token Economy:** Maximize token efficiency. Output ONLY what is directly relevant to the task. Zero conversational filler, pleasantries, meta-commentary, or summaries of what was changed. Every word must carry technical payload.
+- **Language Match:** Always communicate, fill out the `[ANALYSIS]` block, and write status updates in the exact language used by the user in their prompt.
+- **Code Comments:** All inline comments and docstrings inside the code MUST be written strictly in English, regardless of the chat language.
+- **Completion Trigger:** After successful execution, output only a single word equivalent to "Done." or "Fixed." in the user's language (e.g., "Готово." / "Исправлено.").
 
-### 4. Dependency & Agent Maintenance
-- **Config Sync.** Automatically update related configuration files (`package.json`, `config.json`) in the same compact snippet format.
-- **Agent Prompt Upkeep.** If a systemic rule changes, append exactly one short line to the system prompt file.
+### 3. Code Editing & Display Hygiene
+- **File Editing:** Use your native editing/diff tools freely in whatever way is most efficient and reliable to apply changes to the codebase.
+- **Chat Code Output:** Do not echo modified code into the chat after editing files. ONLY display code in the chat if the user explicitly asks to see it — and when asked, output only the relevant snippets or target functions wrapped in markdown code blocks, never the full file.
+
+### 4. Agent Memory Upkeep (AGENTS.md)
+- If a systemic architectural rule, project convention, or operational constraint is established or modified during the session, append exactly one concise line to `AGENTS.md`. Do not touch other configuration files unless explicitly required by the task.
 
 ### 5. Stuck Loop & Expert Handoff
-- If a solution fails after 2 distinct attempts, output: "Prompt for expert AI:" followed by a compact, self-contained prompt containing all context, inputs, and desired output, wrapped in a single markdown code block. Do not retry further.
+- If an issue remains unresolved after 2 distinct attempts, stop retrying immediately.
+- Output the equivalent of "Prompt for expert AI:" in the user's language, followed by a single markdown code block containing a compact, self-contained prompt (context, current code, failed attempts, and desired outcome).
