@@ -35,6 +35,7 @@ Passwords are never persisted.
 | File | Lines | Purpose |
 |---|---|---|
 | `main.go` | ~50 | Wails app entry, window options |
+| `bindings.go` | ~30 | `//go:build bindings` entry point used only for Wails binding generation; calls `wails.Run` with the same `Bind` list but never starts the tray, which would need a session D-Bus absent in CI |
 | `app.go` | ~320 | Bridge: Connect, Disconnect, OpenBrowser, GetHosts/SaveHost/DeleteHost, config, event emit |
 | `ssh.go` | ~235 | Tunnel struct — ssh.Dial, local TCP listener, connection relay (io.Copy), remote command, keepalive, graceful shutdown |
 | `config.go` | ~150 | Config struct, LoadConfig()/SaveConfig(); SavedHost, LoadHosts()/SaveHosts() |
