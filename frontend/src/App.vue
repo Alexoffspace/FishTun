@@ -4,7 +4,7 @@ import Form from './components/Form.vue'
 import TunnelsView from './components/TunnelsView.vue'
 import HostsView from './components/HostsView.vue'
 import LogView from './components/LogView.vue'
-import { GetConfig, IsConnected, SaveConfig, Connect, Disconnect, DisconnectAll, OpenBrowser, GetTunnels, GetHosts, SaveHost, DeleteHost, MinimizeToTray } from '../wailsjs/go/main/App'
+import { GetConfig, IsConnected, SaveConfig, Connect, Disconnect, DisconnectAll, OpenBrowser, GetTunnels, GetHosts, SaveHost, DeleteHost, MinimizeToTray, ExitApp, HideToTray } from '../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
 import type { Config, TunnelInfo, SavedHost } from './types'
 
@@ -28,6 +28,8 @@ const viewMode = ref<'tunnels' | 'hosts'>('tunnels')
 const editingName = ref('')
 const errorMsg = ref('')
 const isLight = ref(false)
+const showCloseDialog = ref(false)
+const logExpanded = ref(false)
 
 let mq: MediaQueryList | null = null
 
@@ -35,10 +37,21 @@ function onThemeChange(e: MediaQueryListEvent | MediaQueryList) {
   isLight.value = e.matches
 }
 
+function toggleLogExpand() {
+  logExpanded.value = !logExpanded.value
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && logExpanded.value) {
+    logExpanded.value = false
+  }
+}
+
 onMounted(async () => {
   mq = window.matchMedia('(prefers-color-scheme: light)')
   onThemeChange(mq)
   mq.addEventListener('change', onThemeChange)
+  window.addEventListener('keydown', onKeydown)
   const cfg = await GetConfig()
   if (cfg) config.value = cfg
 
@@ -62,6 +75,7 @@ onMounted(async () => {
       if (status === 'connected') {
         connecting.value = false
         showForm.value = false
+        viewMode.value = 'tunnels'
       } else if (status === 'disconnected') {
         connecting.value = false
       } else if (status === 'connecting' || status === 'waiting') {
@@ -81,6 +95,10 @@ onMounted(async () => {
     EventsOn('hosts', (hs: SavedHost[]) => {
       hosts.value = hs
     })
+
+    EventsOn('confirm-close', () => {
+      showCloseDialog.value = true
+    })
   }
 
   if (window.runtime) {
@@ -96,12 +114,15 @@ onUnmounted(() => {
   EventsOff('error')
   EventsOff('tunnels')
   EventsOff('hosts')
+  EventsOff('confirm-close')
   mq?.removeEventListener('change', onThemeChange)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 async function handleConnect(cfg: Config, password: string) {
   errorMsg.value = ''
   connecting.value = true
+  viewMode.value = 'tunnels'
   await SaveConfig(cfg)
   config.value = cfg
 
@@ -140,7 +161,18 @@ async function handleMinimize() {
   await MinimizeToTray()
 }
 
+async function handleCloseApp() {
+  showCloseDialog.value = false
+  await ExitApp()
+}
+
+async function handleKeepInTray() {
+  showCloseDialog.value = false
+  await HideToTray()
+}
+
 function handleMakeMore() {
+  viewMode.value = 'tunnels'
   showForm.value = true
   editingName.value = ''
 }
@@ -175,6 +207,7 @@ function handleConnectHost(host: SavedHost) {
   }
   config.value = cfg
   connecting.value = true
+  viewMode.value = 'tunnels'
 
   Connect(
     cfg.SSHUser,
@@ -211,6 +244,7 @@ function openFormForHost(host: SavedHost) {
     RemoteCmd: host.RemoteCmd,
     DisconnectCmd: host.DisconnectCmd,
   }
+  viewMode.value = 'hosts'
   editingName.value = host.name
   showForm.value = true
 }
@@ -287,7 +321,22 @@ async function handleDeleteHost(name: string) {
       </div>
     </Transition>
 
-    <LogView :logs="logs" />
+    <LogView :logs="logs" :expanded="logExpanded" @toggle-expand="toggleLogExpand" />
+
+    <Transition name="dialog">
+      <div v-if="showCloseDialog" class="dialog-overlay" @click.self="handleKeepInTray">
+        <div class="dialog-box">
+          <h2 class="dialog-title">Close FishTun?</h2>
+          <p class="dialog-text">
+            Keep FishTun running in the system tray, or quit the application and disconnect all tunnels?
+          </p>
+          <div class="dialog-actions">
+            <button class="btn btn-primary" @click="handleKeepInTray">System tray</button>
+            <button class="btn btn-danger" @click="handleCloseApp">Close app</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -298,6 +347,13 @@ async function handleDeleteHost(name: string) {
   --bg-card: #16213e;
   --text-primary: #e0e0e0;
   --text-secondary: #a0a0b0;
+  --btn-secondary-bg: #2a2a4a;
+  --btn-secondary-bg-hover: #35355c;
+  --btn-secondary-text: #d8d8e6;
+  --btn-secondary-text-hover: #ffffff;
+  --btn-secondary-border: #3a3a5f;
+  --btn-secondary-border-hover: #4361ee;
+  --btn-secondary-shadow: rgba(67, 97, 238, 0.30);
   --accent: #4361ee;
   --accent-hover: #3a56d4;
   --success: #50dc78;
@@ -315,6 +371,13 @@ async function handleDeleteHost(name: string) {
     --bg-card: #ffffff;
     --text-primary: #1d1d1f;
     --text-secondary: #6e6e73;
+    --btn-secondary-bg: #e6e6ea;
+    --btn-secondary-bg-hover: #dcdce2;
+    --btn-secondary-text: #3a3a44;
+    --btn-secondary-text-hover: #1d1d1f;
+    --btn-secondary-border: #cfcfd6;
+    --btn-secondary-border-hover: #4361ee;
+    --btn-secondary-shadow: rgba(67, 97, 238, 0.20);
     --accent: #4361ee;
     --accent-hover: #3a56d4;
     --success: #34c759;
@@ -547,12 +610,87 @@ body {
 }
 
 .btn-secondary {
-  background: var(--text-secondary);
-  color: white;
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
 }
 
 .btn-secondary:hover {
-  background: var(--text-primary);
-  box-shadow: 0 4px 14px rgba(160,160,176,0.35);
+  background: var(--btn-secondary-bg-hover);
+  border-color: var(--btn-secondary-border-hover);
+  color: var(--btn-secondary-text-hover);
+  box-shadow: 0 4px 14px var(--btn-secondary-shadow);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: white;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 14px rgba(67, 97, 238, 0.4);
+}
+
+.btn-danger:hover {
+  background: var(--danger-hover);
+  box-shadow: 0 4px 14px rgba(231,76,60,0.4);
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.dialog-box {
+  width: min(360px, 88vw);
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: fadeSlideUp 0.2s ease-out;
+}
+
+.dialog-title {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.dialog-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.dialog-enter-active,
+.dialog-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
 }
 </style>

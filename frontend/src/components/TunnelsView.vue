@@ -197,13 +197,16 @@ const emit = defineEmits<{
 }
 
 .btn-secondary {
-  background: var(--text-secondary);
-  color: white;
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
 }
 
 .btn-secondary:hover {
-  background: var(--text-primary);
-  box-shadow: 0 4px 14px rgba(160,160,176,0.35);
+  background: var(--btn-secondary-bg-hover);
+  border-color: var(--btn-secondary-border-hover);
+  color: var(--btn-secondary-text-hover);
+  box-shadow: 0 4px 14px var(--btn-secondary-shadow);
 }
 
 .btn-danger {
